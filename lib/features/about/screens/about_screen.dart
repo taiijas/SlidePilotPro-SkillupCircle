@@ -50,27 +50,15 @@ class AboutScreen extends StatelessWidget {
             // App Logo Placeholder / Visual
             Center(
               child: Container(
-                width: 90,
-                height: 90,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppTheme.primaryBlue, AppTheme.accentBlue],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.accentBlue.withValues(alpha: 0.3),
-                      blurRadius: 16,
-                      offset: const Offset(0, 8),
-                    )
-                  ],
-                ),
-                child: const Icon(
-                  Icons.navigation,
-                  size: 48,
                   color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Image.asset(
+                  'assets/icon/brand_logo.png',
+                  height: 70,
+                  fit: BoxFit.contain,
                 ),
               ),
             ),

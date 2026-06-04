@@ -15,20 +15,18 @@ class MainDashboard extends StatefulWidget {
 class _MainDashboardState extends State<MainDashboard> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = const [
-    ConnectScreen(),
-    PresenterScreen(),
-    TrackpadScreen(),
-    SettingsScreen(),
-    AboutScreen(),
-  ];
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: const [
+          ConnectScreen(),
+          PresenterScreen(),
+          TrackpadScreen(),
+          SettingsScreen(),
+          AboutScreen(),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,

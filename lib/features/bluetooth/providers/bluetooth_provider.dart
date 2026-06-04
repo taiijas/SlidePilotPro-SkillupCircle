@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/services/bluetooth_service.dart';
 
-class BluetoothProvider with ChangeNotifier {
+class BluetoothProvider with ChangeNotifier, WidgetsBindingObserver {
   final BluetoothService _bluetoothService = BluetoothService();
   
   // State variables
@@ -31,10 +31,17 @@ class BluetoothProvider with ChangeNotifier {
   bool get isHidSupported => _isHidSupported;
   bool get isAppRegistered => _isAppRegistered;
   int get connectionState => _connectionState;
+  int get hostConnectionState => _connectionState;
   bool get hasPermissionsState => _hasPermissions;
   
   String? get connectedDeviceAddress => _connectedDeviceAddress;
   String? get connectedDeviceName => _connectedDeviceName;
+  String? get connectedDevice => _connectedDeviceName;
+
+  // Throttling mouse move logs
+  int _pendingMouseMoveCount = 0;
+  DateTime? _lastMouseMoveLogTime;
+  bool _isMouseMoveLogTimerActive = false;
   
   String? get lastDeviceAddress => _lastDeviceAddress;
   String? get lastDeviceName => _lastDeviceName;
@@ -47,6 +54,13 @@ class BluetoothProvider with ChangeNotifier {
 
   BluetoothProvider() {
     _init();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   void log(String message) {
@@ -339,6 +353,11 @@ class BluetoothProvider with ChangeNotifier {
   }
 
   void _logHidReport(Map<String, dynamic> result, String source) {
+    if (source == 'Mouse Move') {
+      _logMouseMoveThrottle(result);
+      return;
+    }
+
     final success = result['success'] == true;
     final reportType = result['reportType'] ?? 'unknown';
     final reportId = result['reportId'] ?? 0;
@@ -351,5 +370,108 @@ class BluetoothProvider with ChangeNotifier {
       final error = result['error'] ?? 'unknown error';
       log('HID SEND FAILED ($source) -> Type: $reportType, ID: $reportId, Action: $action, Error: $error');
     }
+  }
+
+  void _logMouseMoveThrottle(Map<String, dynamic> result) {
+    _pendingMouseMoveCount++;
+    final now = DateTime.now();
+    
+    // In debug mode, print full mouse move report immediately to standard output for development.
+    final success = result['success'] == true;
+    final bytes = result['bytes'] ?? '[]';
+    final action = result['action'] ?? 'unknown';
+    
+    debugPrint('HID SENT MOUSE -> Result: $success, Bytes: $bytes, Action: $action');
+    
+    if (_lastMouseMoveLogTime == null || now.difference(_lastMouseMoveLogTime!) >= const Duration(milliseconds: 300)) {
+      _flushMouseMoveLog(result);
+    } else if (!_isMouseMoveLogTimerActive) {
+      _isMouseMoveLogTimerActive = true;
+      Future.delayed(const Duration(milliseconds: 300), () {
+        _isMouseMoveLogTimerActive = false;
+        _flushMouseMoveLog(result);
+      });
+    }
+  }
+
+  void _flushMouseMoveLog(Map<String, dynamic> lastResult) {
+    if (_pendingMouseMoveCount == 0) return;
+    
+    final success = lastResult['success'] == true;
+    final reportType = lastResult['reportType'] ?? 'mouse';
+    final reportId = lastResult['reportId'] ?? 2;
+    final bytes = lastResult['bytes'] ?? '[]';
+    final action = lastResult['action'] ?? 'unknown';
+    
+    if (success) {
+      log('HID SENT OK (Mouse Move) -> Type: $reportType, ID: $reportId, Bytes: $bytes, Action: $action (x$_pendingMouseMoveCount reports)');
+    } else {
+      final error = lastResult['error'] ?? 'unknown error';
+      log('HID SEND FAILED (Mouse Move) -> Type: $reportType, ID: $reportId, Action: $action, Error: $error (x$_pendingMouseMoveCount reports)');
+    }
+    
+    _pendingMouseMoveCount = 0;
+    _lastMouseMoveLogTime = DateTime.now();
+  }
+
+  // App Lifecycle Handling
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    log('App lifecycle state changed: $state');
+    if (state == AppLifecycleState.resumed) {
+      _handleAppResume();
+    } else if (state == AppLifecycleState.paused) {
+      _handleAppPause();
+    }
+  }
+
+  void _handleAppPause() {
+    log('App paused, temporary background state. App registration state is: $_isAppRegistered');
+  }
+
+  Future<void> _handleAppResume() async {
+    log('App resumed, running resume check...');
+    // check permissions
+    _hasPermissions = await _bluetoothService.checkPermissions();
+    log('Resume check: permissions = $_hasPermissions');
+    
+    if (_hasPermissions) {
+      // check Bluetooth enabled
+      _isBluetoothEnabled = await _bluetoothService.isBluetoothEnabled();
+      log('Resume check: Bluetooth enabled = $_isBluetoothEnabled');
+      
+      if (_isBluetoothEnabled) {
+        // Re-initialize/verify HID profile proxy
+        await _bluetoothService.initializeHidProfile();
+        
+        // Wait slightly for proxy connection to establish
+        await Future.delayed(const Duration(milliseconds: 300));
+        _isHidSupported = await _bluetoothService.checkHidSupport();
+        log('Resume check: HID support = $_isHidSupported');
+        
+        if (_isHidSupported) {
+          // register HID app again if not registered
+          if (!_isAppRegistered) {
+            log('Resume check: HID app not registered. Attempting re-registration...');
+            await registerApp();
+            await Future.delayed(const Duration(milliseconds: 300));
+          }
+        }
+        
+        // refresh bonded devices
+        await refreshDevices();
+        
+        // if autoReconnect enabled and last device exists:
+        final prefs = await SharedPreferences.getInstance();
+        final autoReconnect = prefs.getBool(AppConstants.keyAutoReconnect) ?? true;
+        if (autoReconnect && _lastDeviceAddress != null) {
+          if (_connectionState == 0) { // STATE_DISCONNECTED
+            log('Resume check: Auto-reconnect enabled, attempting reconnection to last host: $_lastDeviceAddress');
+            await connectDevice(_lastDeviceAddress!);
+          }
+        }
+      }
+    }
+    notifyListeners();
   }
 }

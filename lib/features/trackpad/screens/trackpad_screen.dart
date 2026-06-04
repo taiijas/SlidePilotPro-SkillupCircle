@@ -42,7 +42,7 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
     final btProvider = Provider.of<BluetoothProvider>(context);
     final settings = Provider.of<SettingsProvider>(context);
 
-    final isConnected = btProvider.connectionState == 2;
+    final isConnected = btProvider.hostConnectionState == 2;
 
     return Scaffold(
       appBar: AppBar(

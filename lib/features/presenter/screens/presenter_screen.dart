@@ -13,7 +13,7 @@ class PresenterScreen extends StatelessWidget {
     final settings = Provider.of<SettingsProvider>(context, listen: false);
     final btProvider = Provider.of<BluetoothProvider>(context, listen: false);
 
-    if (btProvider.connectionState != 2) {
+    if (btProvider.hostConnectionState != 2) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Not connected to a host device. Please connect in the Connect tab.'),
@@ -93,7 +93,7 @@ class PresenterScreen extends StatelessWidget {
     final btProvider = Provider.of<BluetoothProvider>(context);
     final settings = Provider.of<SettingsProvider>(context);
 
-    final isConnected = btProvider.connectionState == 2;
+    final isConnected = btProvider.hostConnectionState == 2;
 
     return Scaffold(
       appBar: AppBar(

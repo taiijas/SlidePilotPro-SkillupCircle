@@ -56,9 +56,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
             // Host Connection State / Paired Devices
             if (btProvider.hasPermissionsState && btProvider.isHidSupported) ...[
-              if (btProvider.connectionState == 2 && btProvider.connectedDeviceAddress != null)
+              if (btProvider.hostConnectionState == 2 && btProvider.connectedDeviceAddress != null)
                 _buildConnectedDeviceCard(context, btProvider)
-              else if (btProvider.connectionState == 1)
+              else if (btProvider.hostConnectionState == 1)
                 _buildConnectingCard(context)
               else ...[
                 // Last connected device
@@ -145,8 +145,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
             _buildStatusRow(
               context,
               'Host Connection',
-              provider.connectionState == 2 ? 'Connected' : 'Disconnected',
-              provider.connectionState == 2 ? AppTheme.success : AppTheme.error,
+              provider.hostConnectionState == 2 ? 'Connected' : 'Disconnected',
+              provider.hostConnectionState == 2 ? AppTheme.success : AppTheme.error,
             ),
           ],
         ),
@@ -404,6 +404,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
           ),
         ),
         Card(
+          key: ValueKey(provider.lastDeviceAddress),
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             leading: const Icon(Icons.history, color: AppTheme.textMuted, size: 28),
@@ -517,6 +518,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
         final address = device['address'] ?? '';
 
         return Card(
+          key: ValueKey(address),
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             leading: const Icon(Icons.laptop, color: Colors.white70),

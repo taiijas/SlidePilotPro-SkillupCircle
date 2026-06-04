@@ -32,9 +32,9 @@ class AppConstants {
   };
 
   // Links
-  static const String urlSkillUpCircle = 'https://skillupcircle.com';
+  static const String urlSkillUpCircle = 'https://skillupcircle.in';
   static const String urlDeveloperContact = 'https://htejas.com';
   static const String urlDonate = 'https://htejas.com/donate';
-  static const String urlPrivacyPolicy = 'https://skillupcircle.com/privacy';
-  static const String urlTermsOfUse = 'https://skillupcircle.com/terms';
+  static const String urlPrivacyPolicy = 'https://skillupcircle.in/privacy';
+  static const String urlTermsOfUse = 'https://skillupcircle.in/terms';
 }
