@@ -404,7 +404,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
           ),
         ),
         Card(
-          key: ValueKey(provider.lastDeviceAddress),
+          key: ValueKey('last_connected_${provider.lastDeviceAddress}'),
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             leading: const Icon(Icons.history, color: AppTheme.textMuted, size: 28),
@@ -518,7 +518,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
         final address = device['address'] ?? '';
 
         return Card(
-          key: ValueKey(address),
+          key: ValueKey('paired_$address'),
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             leading: const Icon(Icons.laptop, color: Colors.white70),

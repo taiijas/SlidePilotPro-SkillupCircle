@@ -119,16 +119,23 @@ class AboutScreen extends StatelessWidget {
             const SizedBox(height: 12),
             _buildRowButton(
               context,
-              label: 'Visit htejas.com',
-              icon: Icons.public,
-              onPressed: () => _launchUrl(context, AppConstants.urlDeveloperContact),
+              label: 'Developer LinkedIn',
+              icon: Icons.link,
+              onPressed: () => _launchUrl(context, 'https://www.linkedin.com/in/htejas/'),
             ),
             const SizedBox(height: 12),
             _buildRowButton(
               context,
-              label: 'Developer Connect',
-              icon: Icons.alternate_email,
-              onPressed: () => _launchUrl(context, AppConstants.urlDeveloperContact),
+              label: 'Developer Instagram',
+              icon: Icons.camera_alt_outlined,
+              onPressed: () => _launchUrl(context, 'https://www.instagram.com/htejas'),
+            ),
+            const SizedBox(height: 12),
+            _buildRowButton(
+              context,
+              label: 'Email Developer',
+              icon: Icons.mail_outline,
+              onPressed: () => _launchUrl(context, 'mailto:tejas.work@gmail.com'),
             ),
             const SizedBox(height: 12),
             _buildRowButton(
@@ -159,13 +166,6 @@ class AboutScreen extends StatelessWidget {
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 12),
-            _buildRowButton(
-              context,
-              label: 'Email Support',
-              icon: Icons.mail_outline,
-              onPressed: () => _launchUrl(context, 'mailto:support@skillupcircle.com'),
             ),
             const SizedBox(height: 32),
 
