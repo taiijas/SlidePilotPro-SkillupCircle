@@ -65,6 +65,6 @@ class AppConstants {
   static const String urlSkillUpCircle = 'https://skillupcircle.in';
   static const String urlDeveloperContact = 'https://htejas.com';
   static const String urlDonate = 'https://htejas.com/donate';
-  static const String urlPrivacyPolicy = 'https://skillupcircle.in/privacy';
-  static const String urlTermsOfUse = 'https://skillupcircle.in/terms';
+  static const String urlPrivacyPolicy = 'https://skillupcircle.in/slidepilot-pro-privacy-policy/';
+  static const String urlTermsOfUse = 'https://skillupcircle.in/slidepilot-pro-privacy-policy/#terms-of-use';
 }

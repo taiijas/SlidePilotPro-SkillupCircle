@@ -176,7 +176,7 @@ class AboutScreen extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             const Text(
-              'SkillUp Circle wordmark and logo are registered trademarks of SkillUp Ventures Pvt. Ltd.',
+              'SkillUp Circle wordmark and logo are registered trademarks of Tejas Hoskatti and Skillup Circle.',
               style: TextStyle(fontSize: 11, color: Color(0xFF64748B), height: 1.4),
               textAlign: TextAlign.center,
             ),
