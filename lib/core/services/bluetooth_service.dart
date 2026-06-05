@@ -137,6 +137,19 @@ class BluetoothService {
     }
   }
 
+  Future<Map<String, dynamic>> sendKeyboardShortcut(String modifier, String key) async {
+    try {
+      final Map<dynamic, dynamic>? result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+        'sendKeyboardShortcut',
+        {'modifier': modifier, 'key': key},
+      );
+      if (result == null) return {'success': false, 'error': 'No response from platform'};
+      return Map<String, dynamic>.from(result);
+    } on PlatformException catch (e) {
+      return {'success': false, 'error': e.message ?? 'PlatformException'};
+    }
+  }
+
   Future<Map<String, dynamic>> sendMouseMove(int x, int y) async {
     try {
       final Map<dynamic, dynamic>? result = await _channel.invokeMethod<Map<dynamic, dynamic>>(

@@ -81,6 +81,17 @@ class BluetoothHidPlugin: FlutterPlugin, MethodCallHandler, HidManager.StatusLis
                 val keyCode = KeyboardReportBuilder.getKeyCodeFromName(keyName)
                 result.success(manager.sendKeyboardKey(modifier, keyCode))
             }
+            "sendKeyboardShortcut" -> {
+                val modifierName = call.argument<String>("modifier") ?: ""
+                val keyName = call.argument<String>("key")
+                if (keyName == null) {
+                    result.error("INVALID_ARGUMENT", "Key name cannot be null", null)
+                    return
+                }
+                val modifier = KeyboardReportBuilder.getModifierFromName(modifierName)
+                val keyCode = KeyboardReportBuilder.getKeyCodeFromName(keyName)
+                result.success(manager.sendKeyboardKey(modifier, keyCode))
+            }
             "sendMouseMove" -> {
                 val x = call.argument<Int>("x")?.toByte() ?: 0
                 val y = call.argument<Int>("y")?.toByte() ?: 0

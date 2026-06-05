@@ -12,8 +12,12 @@ object KeyboardReportBuilder {
     const val KEY_NONE: Byte = 0
     const val KEY_A: Byte = 0x04
     const val KEY_B: Byte = 0x05
+    const val KEY_D: Byte = 0x07
     const val KEY_P: Byte = 0x13
     const val KEY_W: Byte = 0x1A
+    const val KEY_TAB: Byte = 0x2B
+    const val KEY_MINUS: Byte = 0x2D
+    const val KEY_EQUAL: Byte = 0x2E
     const val KEY_ENTER: Byte = 0x28
     const val KEY_ESCAPE: Byte = 0x29
     const val KEY_SPACE: Byte = 0x2C
@@ -65,6 +69,10 @@ object KeyboardReportBuilder {
             "b" -> KEY_B
             "w" -> KEY_W
             "p" -> KEY_P
+            "d" -> KEY_D
+            "tab" -> KEY_TAB
+            "plus", "+", "equal", "=" -> KEY_EQUAL
+            "minus", "-", "hyphen" -> KEY_MINUS
             "enter" -> KEY_ENTER
             "return" -> KEY_ENTER
             else -> KEY_NONE
@@ -75,11 +83,12 @@ object KeyboardReportBuilder {
      * Maps modifier names from Flutter to modifier byte masks.
      */
     fun getModifierFromName(modifierName: String): Byte {
+        val name = modifierName.lowercase()
         var mask: Byte = MODIFIER_NONE
-        if (modifierName.contains("ctrl")) mask = (mask.toInt() or MODIFIER_LEFT_CTRL.toInt()).toByte()
-        if (modifierName.contains("shift")) mask = (mask.toInt() or MODIFIER_LEFT_SHIFT.toInt()).toByte()
-        if (modifierName.contains("alt")) mask = (mask.toInt() or MODIFIER_LEFT_ALT.toInt()).toByte()
-        if (modifierName.contains("gui") || modifierName.contains("cmd") || modifierName.contains("meta")) {
+        if (name.contains("ctrl") || name.contains("control")) mask = (mask.toInt() or MODIFIER_LEFT_CTRL.toInt()).toByte()
+        if (name.contains("shift")) mask = (mask.toInt() or MODIFIER_LEFT_SHIFT.toInt()).toByte()
+        if (name.contains("alt") || name.contains("option")) mask = (mask.toInt() or MODIFIER_LEFT_ALT.toInt()).toByte()
+        if (name.contains("gui") || name.contains("cmd") || name.contains("meta") || name.contains("win")) {
             mask = (mask.toInt() or MODIFIER_LEFT_GUI.toInt()).toByte()
         }
         return mask

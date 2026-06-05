@@ -318,6 +318,13 @@ class BluetoothProvider with ChangeNotifier, WidgetsBindingObserver {
     return result;
   }
 
+  Future<Map<String, dynamic>> sendKeyboardShortcut(String modifier, String key) async {
+    log('Sending HID keyboard shortcut: modifier=$modifier, key=$key');
+    final result = await _bluetoothService.sendKeyboardShortcut(modifier, key);
+    _logHidReport(result, 'Keyboard Shortcut');
+    return result;
+  }
+
   // Mouse controls
   Future<Map<String, dynamic>> sendMouseMove(int x, int y) async {
     final result = await _bluetoothService.sendMouseMove(x, y);
