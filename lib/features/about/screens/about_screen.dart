@@ -128,7 +128,7 @@ class AboutScreen extends StatelessWidget {
               context,
               label: 'Developer Instagram',
               icon: Icons.camera_alt_outlined,
-              onPressed: () => _launchUrl(context, 'https://www.instagram.com/htejas'),
+              onPressed: () => _launchUrl(context, 'https://www.instagram.com/h.tejas'),
             ),
             const SizedBox(height: 12),
             _buildRowButton(
