@@ -4,6 +4,10 @@ import 'package:provider/provider.dart';
 import '../providers/bluetooth_provider.dart';
 import '../../settings/providers/settings_provider.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/services/receiver_service.dart';
+import '../../../core/services/transport_provider.dart';
+import '../../../core/services/receiver_websocket_transport.dart';
+import '../../receiver/screens/receiver_connect_screen.dart';
 
 class ConnectScreen extends StatefulWidget {
   const ConnectScreen({super.key});
@@ -26,10 +30,17 @@ class _ConnectScreenState extends State<ConnectScreen> {
   @override
   Widget build(BuildContext context) {
     final btProvider = Provider.of<BluetoothProvider>(context);
+    final receiverService = Provider.of<ReceiverService>(context);
+    final settings = Provider.of<SettingsProvider>(context);
+    final transportProvider = Provider.of<TransportProvider>(context);
+
+    // Active resolved mode: Bluetooth or Receiver
+    final activeTransport = transportProvider.activeTransport;
+    final isReceiverMode = activeTransport is ReceiverWebSocketTransport;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Bluetooth Controller'),
+        title: const Text('Connection Manager'),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -38,58 +49,389 @@ class _ConnectScreenState extends State<ConnectScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Status Panel
-            _buildStatusPanel(context, btProvider),
-            const SizedBox(height: 20),
+            // Mode selection cards
+            _buildModeSelectionCards(context, btProvider, receiverService, settings),
+            const SizedBox(height: 24),
 
-            // If permissions are missing, show Permission Banner
-            if (!btProvider.hasPermissionsState) ...[
-              _buildPermissionRequestCard(context, btProvider),
+            if (!isReceiverMode) ...[
+              // Bluetooth HID Mode layout
+              // Status Panel
+              _buildStatusPanel(context, btProvider),
               const SizedBox(height: 20),
-            ],
 
-            // If HID Profile is unsupported, show warning message
-            if (btProvider.hasPermissionsState && !btProvider.isHidSupported) ...[
-              _buildHidUnsupportedCard(context),
-              const SizedBox(height: 20),
-            ],
-
-            // Host Connection State / Paired Devices
-            if (btProvider.hasPermissionsState && btProvider.isHidSupported) ...[
-              if (btProvider.hostConnectionState == 2 && btProvider.connectedDeviceAddress != null)
-                _buildConnectedDeviceCard(context, btProvider)
-              else if (btProvider.hostConnectionState == 1)
-                _buildConnectingCard(context)
-              else ...[
-                // Last connected device
-                if (btProvider.lastDeviceAddress != null) ...[
-                  _buildLastConnectedCard(context, btProvider),
-                  const SizedBox(height: 20),
-                ],
-
-                // Paired devices list
-                _buildPairedDevicesHeader(context, btProvider),
-                const SizedBox(height: 8),
-                _buildPairedDevicesList(context, btProvider),
+              // If permissions are missing, show Permission Banner
+              if (!btProvider.hasPermissionsState) ...[
+                _buildPermissionRequestCard(context, btProvider),
+                const SizedBox(height: 20),
               ],
+
+              // If HID Profile is unsupported, show warning message
+              if (btProvider.hasPermissionsState && !btProvider.isHidSupported) ...[
+                _buildHidUnsupportedCard(context),
+                const SizedBox(height: 20),
+              ],
+
+              // Host Connection State / Paired Devices
+              if (btProvider.hasPermissionsState && btProvider.isHidSupported) ...[
+                if (btProvider.hostConnectionState == 2 && btProvider.connectedDeviceAddress != null)
+                  _buildConnectedDeviceCard(context, btProvider)
+                else if (btProvider.hostConnectionState == 1)
+                  _buildConnectingCard(context)
+                else ...[
+                  // Last connected device
+                  if (btProvider.lastDeviceAddress != null) ...[
+                    _buildLastConnectedCard(context, btProvider),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // Paired devices list
+                  _buildPairedDevicesHeader(context, btProvider),
+                  const SizedBox(height: 8),
+                  _buildPairedDevicesList(context, btProvider),
+                ],
+                const SizedBox(height: 20),
+              ],
+
+              // System Actions: Open Bluetooth Settings & Diagnostics
+              _buildSystemActionsCard(context, btProvider),
+              const SizedBox(height: 20),
+
+              // Diagnostics Results Panel
+              if (_showDiagnostics) ...[
+                _buildDiagnosticsPanel(context, btProvider),
+                const SizedBox(height: 20),
+              ],
+
+              // Debug Logs Console
+              if (_showLogs) ...[
+                _buildLogsConsole(context, btProvider),
+                const SizedBox(height: 20),
+              ],
+            ] else ...[
+              // Universal Receiver Mode layout
+              _buildReceiverStatusPanel(context, receiverService),
+              const SizedBox(height: 20),
+
+              _buildReceiverActionsCard(context, receiverService),
               const SizedBox(height: 20),
             ],
+          ],
+        ),
+      ),
+    );
+  }
 
-            // System Actions: Open Bluetooth Settings & Diagnostics
-            _buildSystemActionsCard(context, btProvider),
+  Widget _buildModeSelectionCards(
+    BuildContext context,
+    BluetoothProvider btProvider,
+    ReceiverService receiverService,
+    SettingsProvider settings,
+  ) {
+    final currentPrefMode = settings.preferredConnectionMode; // 'auto', 'bluetooth', 'receiver'
+    final isHidSupported = btProvider.isHidSupported;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Select Connection Mode',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+        ),
+        const SizedBox(height: 12),
+        // Bluetooth HID Card
+        _buildModeCard(
+          context: context,
+          title: 'Bluetooth HID Mode',
+          subtitle: 'No computer app required. Requires hardware Android HID support.',
+          isSelected: currentPrefMode == 'bluetooth' || (currentPrefMode == 'auto' && isHidSupported),
+          badgeText: !isHidSupported ? 'HID UNSUPPORTED' : (btProvider.hostConnectionState == 2 ? 'CONNECTED' : 'AVAILABLE'),
+          badgeColor: !isHidSupported ? AppTheme.error : (btProvider.hostConnectionState == 2 ? AppTheme.success : AppTheme.accentBlue),
+          onTap: () {
+            _triggerHaptic(context);
+            settings.setPreferredConnectionMode('bluetooth');
+          },
+          icon: Icons.bluetooth,
+        ),
+        const SizedBox(height: 12),
+        // Universal Receiver Card
+        _buildModeCard(
+          context: context,
+          title: 'Universal Receiver Mode',
+          subtitle: 'Works with SlidePilot Receiver app on Windows over local Wi-Fi.',
+          isSelected: currentPrefMode == 'receiver' || (currentPrefMode == 'auto' && !isHidSupported),
+          badgeText: !isHidSupported ? 'RECOMMENDED' : (receiverService.isConnected && receiverService.pairingStatus == 'Paired' ? 'CONNECTED' : 'WIFI'),
+          badgeColor: !isHidSupported ? AppTheme.success : (receiverService.isConnected && receiverService.pairingStatus == 'Paired' ? AppTheme.success : Colors.purple),
+          onTap: () {
+            _triggerHaptic(context);
+            settings.setPreferredConnectionMode('receiver');
+          },
+          icon: Icons.wifi,
+        ),
+        const SizedBox(height: 12),
+        // Auto Toggle / Restore Defaults option
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Preferred Connection Mode:',
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
+            ),
+            DropdownButton<String>(
+              value: currentPrefMode,
+              dropdownColor: AppTheme.cardBg,
+              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+              underline: Container(),
+              items: const [
+                DropdownMenuItem(value: 'auto', child: Text('Auto (Recommended)')),
+                DropdownMenuItem(value: 'bluetooth', child: Text('Force Bluetooth HID')),
+                DropdownMenuItem(value: 'receiver', child: Text('Force Universal Receiver')),
+              ],
+              onChanged: (val) {
+                if (val != null) {
+                  _triggerHaptic(context);
+                  settings.setPreferredConnectionMode(val);
+                }
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildModeCard({
+    required BuildContext context,
+    required String title,
+    required String subtitle,
+    required bool isSelected,
+    required String badgeText,
+    required Color badgeColor,
+    required VoidCallback onTap,
+    required IconData icon,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: isSelected 
+              ? AppTheme.cardBg.withValues(alpha: 0.8) 
+              : AppTheme.cardBg.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? AppTheme.accentBlue : AppTheme.borderCol,
+            width: isSelected ? 2.0 : 1.0,
+          ),
+          boxShadow: isSelected ? [
+            BoxShadow(
+              color: AppTheme.accentBlue.withValues(alpha: 0.15),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            )
+          ] : null,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isSelected ? AppTheme.accentBlue.withValues(alpha: 0.1) : AppTheme.borderCol.withValues(alpha: 0.5),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: isSelected ? AppTheme.accentBlue : AppTheme.textMuted, size: 28),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: isSelected ? Colors.white : Colors.white70,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: badgeColor.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: badgeColor, width: 0.8),
+                          ),
+                          child: Text(
+                            badgeText,
+                            style: TextStyle(
+                              color: badgeColor,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppTheme.textMuted,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReceiverStatusPanel(BuildContext context, ReceiverService service) {
+    Color getStatusColor() {
+      if (service.isConnecting || service.pairingStatus == 'Pairing') return Colors.amber;
+      if (service.isConnected && service.pairingStatus == 'Paired') return AppTheme.success;
+      return AppTheme.error;
+    }
+
+    String getStatusText() {
+      if (service.isConnecting || service.pairingStatus == 'Pairing') return 'Pairing...';
+      if (service.isConnected && service.pairingStatus == 'Paired') return 'Receiver Connected';
+      return 'Disconnected';
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Receiver System Status',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 16),
+            _buildStatusRow(
+              context,
+              'Connection Status',
+              getStatusText(),
+              getStatusColor(),
+            ),
+            if (service.isConnected && service.host != null) ...[
+              const Divider(color: AppTheme.borderCol, height: 20),
+              _buildStatusRow(
+                context,
+                'Receiver IP Address',
+                service.host!,
+                Colors.white,
+              ),
+              const Divider(color: AppTheme.borderCol, height: 20),
+              _buildStatusRow(
+                context,
+                'Receiver Port',
+                service.port.toString(),
+                Colors.white,
+              ),
+              const Divider(color: AppTheme.borderCol, height: 20),
+              _buildStatusRow(
+                context,
+                'Device Name',
+                service.deviceName ?? 'Windows PC',
+                Colors.white,
+              ),
+            ],
+            if (service.lastPingMs != null) ...[
+              const Divider(color: AppTheme.borderCol, height: 20),
+              _buildStatusRow(
+                context,
+                'Ping Round-trip Time',
+                '${service.lastPingMs} ms',
+                AppTheme.accentBlue,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReceiverActionsCard(BuildContext context, ReceiverService service) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Receiver Controls',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Connect to the SlidePilot Receiver desktop companion application on your Windows computer over Wi-Fi/LAN.',
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 13, height: 1.4),
+            ),
             const SizedBox(height: 20),
-
-            // Diagnostics Results Panel
-            if (_showDiagnostics) ...[
-              _buildDiagnosticsPanel(context, btProvider),
-              const SizedBox(height: 20),
-            ],
-
-            // Debug Logs Console
-            if (_showLogs) ...[
-              _buildLogsConsole(context, btProvider),
-              const SizedBox(height: 20),
-            ],
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 52,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.settings_ethernet),
+                      label: const Text('CONNECT TO RECEIVER'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.accentBlue,
+                        foregroundColor: Colors.white,
+                        textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () {
+                        _triggerHaptic(context);
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const ReceiverConnectScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                if (service.isConnected) ...[
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    height: 52,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.error,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () {
+                        _triggerHaptic(context);
+                        service.disconnectReceiver();
+                      },
+                      child: const Text('DISCONNECT'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       ),

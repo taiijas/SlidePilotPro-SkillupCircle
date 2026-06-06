@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../bluetooth/providers/bluetooth_provider.dart';
+import '../../../core/services/control_transport.dart';
+import '../../../core/services/receiver_websocket_transport.dart';
 import '../../settings/providers/settings_provider.dart';
 
 class GestureEngine {
@@ -20,6 +21,7 @@ class GestureEngine {
   Offset? _lastCentroid;
   int _maxPointerCount = 0;
   bool _hasMoved = false;
+  bool _longPressTriggered = false;
 
   // Timers
   Timer? _longPressTimer;
@@ -29,7 +31,6 @@ class GestureEngine {
   DateTime? _lastTapTime;
   Offset? _lastTapPosition;
   bool _isDragHolding = false;
-  bool _longPressTriggered = false;
 
   // Scroll and Pinch states
   double _initialPinchDistance = 0.0;
@@ -67,8 +68,8 @@ class GestureEngine {
     }
   }
 
-  bool _checkConnected(BluetoothProvider btProvider) {
-    final connected = btProvider.hostConnectionState == 2;
+  bool _checkConnected(ControlTransport transport) {
+    final connected = transport.isConnected;
     if (!connected) {
       onConnectionWarning?.call("Host disconnected. Action ignored.");
     }
@@ -86,17 +87,17 @@ class GestureEngine {
     return Offset(sumX / _activePointers.length, sumY / _activePointers.length);
   }
 
-  void handlePointerEvent(PointerEvent event, BluetoothProvider btProvider, SettingsProvider settings) {
+  void handlePointerEvent(PointerEvent event, ControlTransport transport, SettingsProvider settings) {
     if (event is PointerDownEvent) {
-      _handlePointerDown(event, btProvider, settings);
+      _handlePointerDown(event, transport, settings);
     } else if (event is PointerMoveEvent) {
-      _handlePointerMove(event, btProvider, settings);
+      _handlePointerMove(event, transport, settings);
     } else if (event is PointerUpEvent || event is PointerCancelEvent) {
-      _handlePointerUp(event, btProvider, settings);
+      _handlePointerUp(event, transport, settings);
     }
   }
 
-  void _handlePointerDown(PointerDownEvent event, BluetoothProvider btProvider, SettingsProvider settings) {
+  void _handlePointerDown(PointerDownEvent event, ControlTransport transport, SettingsProvider settings) {
     _activePointers[event.pointer] = event.position;
     
     // Start of gesture session
@@ -116,10 +117,10 @@ class GestureEngine {
           final dist = (event.position - _lastTapPosition!).distance;
           
           if (diffMs <= settings.tapTimeout && dist <= 25.0) {
-            if (_checkConnected(btProvider)) {
+            if (_checkConnected(transport)) {
               _isDragHolding = true;
               _triggerHaptic(settings);
-              btProvider.sendMouseButton(0, true); // Left click down
+              transport.sendMouseButton(0, true); // Left click down
               _tempShowGesture("Double Tap & Drag");
             }
           }
@@ -130,11 +131,10 @@ class GestureEngine {
           _longPressTimer?.cancel();
           _longPressTimer = Timer(Duration(milliseconds: settings.longPressDuration), () {
             if (_activePointers.length == 1 && _maxPointerCount == 1 && !_hasMoved && !_longPressTriggered) {
-              if (_checkConnected(btProvider)) {
+              if (_checkConnected(transport)) {
                 _longPressTriggered = true;
                 _triggerHaptic(settings);
-                // Right click macro
-                _sendRightClick(btProvider);
+                _sendRightClick(transport);
                 _tempShowGesture("Long Press (Right Click)");
               }
             }
@@ -166,7 +166,7 @@ class GestureEngine {
     }
   }
 
-  void _handlePointerMove(PointerMoveEvent event, BluetoothProvider btProvider, SettingsProvider settings) {
+  void _handlePointerMove(PointerMoveEvent event, ControlTransport transport, SettingsProvider settings) {
     _activePointers[event.pointer] = event.position;
     final centroid = _calculateCentroid();
 
@@ -183,12 +183,12 @@ class GestureEngine {
 
     if (_maxPointerCount == 1) {
       if (settings.gestureMode == 'trackpad') {
-        if (_checkConnected(btProvider)) {
+        if (_checkConnected(transport)) {
           // Send mouse move
           final double dx = delta.dx * settings.pointerSensitivity;
           final double dy = delta.dy * settings.pointerSensitivity;
           if (dx != 0 || dy != 0) {
-            btProvider.sendMouseMove(
+            transport.sendMouseMove(
               dx.round().clamp(-127, 127),
               dy.round().clamp(-127, 127),
             );
@@ -214,48 +214,48 @@ class GestureEngine {
       }
 
       if (_isScrollMode) {
-        if (_checkConnected(btProvider)) {
+        if (_checkConnected(transport)) {
           // Scroll vertical
           _accumulatedScrollY += delta.dy * settings.scrollSensitivity;
           if (_accumulatedScrollY.abs() >= 1.5) {
             final int scrollVal = _accumulatedScrollY.round();
-            btProvider.sendMouseScroll(scrollVal.clamp(-127, 127));
+            transport.sendMouseScroll(scrollVal.clamp(-127, 127));
             _accumulatedScrollY -= scrollVal;
             _tempShowGesture("Two-finger Scroll");
           }
 
-          // Scroll horizontal -> map to custom shortcut if HID doesn't support it
+          // Scroll horizontal
           _accumulatedScrollX += delta.dx * settings.scrollSensitivity;
           final thresholdX = 40.0 / settings.gestureSensitivity;
           if (_accumulatedScrollX.abs() >= thresholdX) {
             _triggerHaptic(settings);
             if (_accumulatedScrollX > 0) {
               // Scroll right (swipe fingers right) -> Go Left/Back
-              _sendBackForwardShortcut(btProvider, settings, isBack: true);
+              _sendBackForwardShortcut(transport, settings, isBack: true);
               _tempShowGesture("Scroll Left (Back)");
             } else {
               // Scroll left (swipe fingers left) -> Go Right/Forward
-              _sendBackForwardShortcut(btProvider, settings, isBack: false);
+              _sendBackForwardShortcut(transport, settings, isBack: false);
               _tempShowGesture("Scroll Right (Forward)");
             }
             _accumulatedScrollX = 0;
           }
         }
       } else if (_isPinchMode) {
-        if (_checkConnected(btProvider)) {
+        if (_checkConnected(transport)) {
           final scaleRatio = scale / _pinchBaselineScale;
-          final double pinchOutThreshold = 1.15;
-          final double pinchInThreshold = 0.85;
+          const double pinchOutThreshold = 1.15;
+          const double pinchInThreshold = 0.85;
 
           if (scaleRatio >= pinchOutThreshold) {
             _pinchBaselineScale = scale;
             _triggerHaptic(settings);
-            _sendZoomShortcut(btProvider, settings, isZoomIn: true);
+            _sendZoomShortcut(transport, settings, isZoomIn: true);
             _tempShowGesture("Pinch Out (Zoom In)");
           } else if (scaleRatio <= pinchInThreshold) {
             _pinchBaselineScale = scale;
             _triggerHaptic(settings);
-            _sendZoomShortcut(btProvider, settings, isZoomIn: false);
+            _sendZoomShortcut(transport, settings, isZoomIn: false);
             _tempShowGesture("Pinch In (Zoom Out)");
           }
         }
@@ -278,19 +278,19 @@ class GestureEngine {
 
           if (settings.gestureMode == 'trackpad') {
             if (_maxPointerCount == 3) {
-              _sendThreeFingerSwipe(btProvider, settings, direction);
+              _sendThreeFingerSwipe(transport, settings, direction);
               _tempShowGesture("Three-finger Swipe ${direction.toUpperCase()}");
             } else if (_maxPointerCount == 4) {
-              _sendFourFingerSwipe(btProvider, settings, direction);
+              _sendFourFingerSwipe(transport, settings, direction);
               _tempShowGesture("Four-finger Swipe ${direction.toUpperCase()}");
             }
           } else if (settings.gestureMode == 'presentation') {
-            // Presentation Swipe Mode: 3 or 4 fingers can fall back, or just swipe
+            // Presentation Swipe Mode
             if (direction == "left") {
-              _sendNextSlide(btProvider, settings);
+              _sendNextSlide(transport, settings);
               _tempShowGesture("Presentation Swipe Left (Next)");
             } else if (direction == "right") {
-              _sendPrevSlide(btProvider, settings);
+              _sendPrevSlide(transport, settings);
               _tempShowGesture("Presentation Swipe Right (Prev)");
             }
           }
@@ -305,17 +305,17 @@ class GestureEngine {
         _isSwipeMode = true;
         _triggerHaptic(settings);
         if (swipeDisplacementX < 0) {
-          _sendNextSlide(btProvider, settings);
+          _sendNextSlide(transport, settings);
           _tempShowGesture("Swipe Left (Next Slide)");
         } else {
-          _sendPrevSlide(btProvider, settings);
+          _sendPrevSlide(transport, settings);
           _tempShowGesture("Swipe Right (Prev Slide)");
         }
       }
     }
   }
 
-  void _handlePointerUp(PointerEvent event, BluetoothProvider btProvider, SettingsProvider settings) {
+  void _handlePointerUp(PointerEvent event, ControlTransport transport, SettingsProvider settings) {
     _activePointers.remove(event.pointer);
     
     if (_activePointers.isEmpty) {
@@ -325,15 +325,15 @@ class GestureEngine {
       
       if (_isDragHolding) {
         _isDragHolding = false;
-        if (_checkConnected(btProvider)) {
-          btProvider.sendMouseButton(0, false); // Left click up
+        if (_checkConnected(transport)) {
+          transport.sendMouseButton(0, false); // Left click up
           _triggerHaptic(settings);
         }
       } else if (!_hasMoved && !_longPressTriggered) {
         if (_gestureStartTime != null) {
           final sessionDurationMs = sessionEndTime.difference(_gestureStartTime!).inMilliseconds;
           if (sessionDurationMs <= settings.tapTimeout) {
-            _handleTap(btProvider, settings, event.position);
+            _handleTap(transport, settings, event.position);
           }
         }
       }
@@ -346,37 +346,37 @@ class GestureEngine {
     }
   }
 
-  void _handleTap(BluetoothProvider btProvider, SettingsProvider settings, Offset position) {
+  void _handleTap(ControlTransport transport, SettingsProvider settings, Offset position) {
     if (settings.gestureMode == 'trackpad') {
       if (_maxPointerCount == 1) {
         // One-finger tap: left click
-        if (_checkConnected(btProvider)) {
+        if (_checkConnected(transport)) {
           _triggerHaptic(settings);
-          btProvider.sendLeftClick();
+          transport.sendLeftClick();
           _tempShowGesture("Tap (Left Click)");
         }
         _lastTapTime = DateTime.now();
         _lastTapPosition = position;
       } else if (_maxPointerCount == 2) {
         // Two-finger tap: right click
-        if (_checkConnected(btProvider)) {
+        if (_checkConnected(transport)) {
           _triggerHaptic(settings);
-          _sendRightClick(btProvider);
+          _sendRightClick(transport);
           _tempShowGesture("Two-finger Tap (Right Click)");
         }
       } else if (_maxPointerCount == 3) {
         // Three-finger tap: configurable action
-        if (_checkConnected(btProvider)) {
+        if (_checkConnected(transport)) {
           _triggerHaptic(settings);
-          _executeConfigurableAction(btProvider, settings, settings.threeFingerTapAction, 
+          _executeConfigurableAction(transport, settings, settings.threeFingerTapAction, 
               settings.threeFingerTapCustomModifier, settings.threeFingerTapCustomKey);
           _tempShowGesture("Three-finger Tap");
         }
       } else if (_maxPointerCount == 4) {
         // Four-finger tap: configurable action
-        if (_checkConnected(btProvider)) {
+        if (_checkConnected(transport)) {
           _triggerHaptic(settings);
-          _executeConfigurableAction(btProvider, settings, settings.fourFingerTapAction, 
+          _executeConfigurableAction(transport, settings, settings.fourFingerTapAction, 
               settings.fourFingerTapCustomModifier, settings.fourFingerTapCustomKey);
           _tempShowGesture("Four-finger Tap");
         }
@@ -389,9 +389,9 @@ class GestureEngine {
           final diffMs = now.difference(_lastTapTime!).inMilliseconds;
           final dist = (position - _lastTapPosition!).distance;
           if (diffMs <= settings.tapTimeout && dist <= 25.0) {
-            if (_checkConnected(btProvider)) {
+            if (_checkConnected(transport)) {
               _triggerHaptic(settings);
-              _sendStartSlideshow(btProvider, settings);
+              _sendStartSlideshow(transport, settings);
               _tempShowGesture("Double Tap (Start Show)");
             }
           }
@@ -400,16 +400,16 @@ class GestureEngine {
         _lastTapPosition = position;
       } else if (_maxPointerCount == 2) {
         // Two-finger tap: black screen
-        if (_checkConnected(btProvider)) {
+        if (_checkConnected(transport)) {
           _triggerHaptic(settings);
-          btProvider.sendKeyboardShortcut("", "b");
+          transport.sendKeyboardShortcut("", "b");
           _tempShowGesture("Two-finger Tap (Black Screen)");
         }
       } else if (_maxPointerCount == 3) {
         // Three-finger tap: white screen
-        if (_checkConnected(btProvider)) {
+        if (_checkConnected(transport)) {
           _triggerHaptic(settings);
-          btProvider.sendKeyboardShortcut("", "w");
+          transport.sendKeyboardShortcut("", "w");
           _tempShowGesture("Three-finger Tap (White Screen)");
         }
       }
@@ -417,56 +417,61 @@ class GestureEngine {
   }
 
   // Right click helper
-  void _sendRightClick(BluetoothProvider btProvider) async {
-    await btProvider.sendMouseButton(1, true);
+  void _sendRightClick(ControlTransport transport) async {
+    await transport.sendMouseButton(1, true);
     await Future.delayed(const Duration(milliseconds: 30));
-    await btProvider.sendMouseButton(1, false);
+    await transport.sendMouseButton(1, false);
   }
 
   // Profile-specific zoom helper
-  void _sendZoomShortcut(BluetoothProvider btProvider, SettingsProvider settings, {required bool isZoomIn}) {
-    final key = isZoomIn ? "plus" : "minus";
-    final isMac = _isMacProfile(settings);
-    final mod = isMac ? "meta" : "ctrl";
-    btProvider.sendKeyboardShortcut(mod, key);
+  void _sendZoomShortcut(ControlTransport transport, SettingsProvider settings, {required bool isZoomIn}) {
+    final action = isZoomIn ? "pinch_out" : "pinch_in";
+    final profile = settings.platformProfile.toLowerCase();
+    
+    if (transport is ReceiverWebSocketTransport) {
+      transport.sendGesture(action, profile);
+    } else {
+      final key = isZoomIn ? "plus" : "minus";
+      final isMac = _isMacProfile(settings);
+      final mod = isMac ? "meta" : "ctrl";
+      transport.sendKeyboardShortcut(mod, key);
+    }
   }
 
   // Scroll horizontal back/forward navigation
-  void _sendBackForwardShortcut(BluetoothProvider btProvider, SettingsProvider settings, {required bool isBack}) {
+  void _sendBackForwardShortcut(ControlTransport transport, SettingsProvider settings, {required bool isBack}) {
     final isMac = _isMacProfile(settings);
     if (isMac) {
-      // Cmd + Left (Back) / Cmd + Right (Forward)
-      btProvider.sendKeyboardShortcut("meta", isBack ? "left_arrow" : "right_arrow");
+      transport.sendKeyboardShortcut("meta", isBack ? "left_arrow" : "right_arrow");
     } else {
-      // Alt + Left (Back) / Alt + Right (Forward)
-      btProvider.sendKeyboardShortcut("alt", isBack ? "left_arrow" : "right_arrow");
+      transport.sendKeyboardShortcut("alt", isBack ? "left_arrow" : "right_arrow");
     }
   }
 
   // Configurable action runner
-  void _executeConfigurableAction(BluetoothProvider btProvider, SettingsProvider settings, String action, String customMod, String customKey) {
+  void _executeConfigurableAction(ControlTransport transport, SettingsProvider settings, String action, String customMod, String customKey) {
     switch (action) {
       case 'middle_click':
-        btProvider.sendMouseButton(2, true);
+        transport.sendMouseButton(2, true);
         Future.delayed(const Duration(milliseconds: 30), () {
-          btProvider.sendMouseButton(2, false);
+          transport.sendMouseButton(2, false);
         });
         break;
       case 'left_click':
-        btProvider.sendLeftClick();
+        transport.sendLeftClick();
         break;
       case 'right_click':
-        _sendRightClick(btProvider);
+        _sendRightClick(transport);
         break;
       case 'space':
-        btProvider.sendKeyboardShortcut("", "space");
+        transport.sendKeyboardShortcut("", "space");
         break;
       case 'enter':
-        btProvider.sendKeyboardShortcut("", "enter");
+        transport.sendKeyboardShortcut("", "enter");
         break;
       case 'custom':
         if (customKey.isNotEmpty) {
-          btProvider.sendKeyboardShortcut(customMod, customKey);
+          transport.sendKeyboardShortcut(customMod, customKey);
         }
         break;
       case 'none':
@@ -480,141 +485,43 @@ class GestureEngine {
     return prof == 'macos' || prof == 'keynote' || (prof == 'powerpoint' && settings.presentationProfile.contains('mac')) || (prof == 'google_slides' && settings.presentationProfile.contains('mac'));
   }
 
-  void _sendThreeFingerSwipe(BluetoothProvider btProvider, SettingsProvider settings, String direction) {
-    final prof = settings.platformProfile.toLowerCase();
-    
-    if (prof == 'macos') {
-      switch (direction) {
-        case 'up':
-          btProvider.sendKeyboardShortcut("ctrl", "up_arrow");
-          break;
-        case 'down':
-          btProvider.sendKeyboardShortcut("ctrl", "down_arrow");
-          break;
-        case 'left':
-          btProvider.sendKeyboardShortcut("ctrl", "left_arrow");
-          break;
-        case 'right':
-          btProvider.sendKeyboardShortcut("ctrl", "right_arrow");
-          break;
-      }
-    } else if (prof == 'windows') {
-      switch (direction) {
-        case 'up':
-          btProvider.sendKeyboardShortcut("meta", "tab"); // Task View
-          break;
-        case 'down':
-          btProvider.sendKeyboardShortcut("meta", "d"); // Show Desktop
-          break;
-        case 'left':
-          btProvider.sendKeyboardShortcut("alt", "tab"); // Switch app
-          break;
-        case 'right':
-          btProvider.sendKeyboardShortcut("alt+shift", "tab"); // Switch app reverse
-          break;
-      }
-    } else if (prof == 'linux') {
-      switch (direction) {
-        case 'up':
-          btProvider.sendKeyboardShortcut("meta", "tab");
-          break;
-        case 'down':
-          btProvider.sendKeyboardShortcut("meta", "d");
-          break;
-        case 'left':
-          btProvider.sendKeyboardShortcut("alt", "tab");
-          break;
-        case 'right':
-          btProvider.sendKeyboardShortcut("alt+shift", "tab");
-          break;
-      }
-    } else {
-      // Default fallback
-      switch (direction) {
-        case 'left':
-          btProvider.sendKeyboardShortcut("", "left_arrow");
-          break;
-        case 'right':
-          btProvider.sendKeyboardShortcut("", "right_arrow");
-          break;
-        case 'up':
-          btProvider.sendKeyboardShortcut("", "up_arrow");
-          break;
-        case 'down':
-          btProvider.sendKeyboardShortcut("", "down_arrow");
-          break;
-      }
-    }
+  void _sendThreeFingerSwipe(ControlTransport transport, SettingsProvider settings, String direction) {
+    transport.sendGesture('three_finger_swipe_$direction', settings.platformProfile.toLowerCase());
   }
 
-  void _sendFourFingerSwipe(BluetoothProvider btProvider, SettingsProvider settings, String direction) {
-    final prof = settings.platformProfile.toLowerCase();
-
-    if (prof == 'macos') {
-      if (direction == 'left') {
-        if (settings.macosFourFingerSwipeOption == 'app_switching') {
-          btProvider.sendKeyboardShortcut("meta", "tab");
-        } else {
-          btProvider.sendKeyboardShortcut("ctrl", "left_arrow");
-        }
-      } else if (direction == 'right') {
-        if (settings.macosFourFingerSwipeOption == 'app_switching') {
-          btProvider.sendKeyboardShortcut("meta+shift", "tab");
-        } else {
-          btProvider.sendKeyboardShortcut("ctrl", "right_arrow");
-        }
-      }
-    } else if (prof == 'windows') {
-      if (direction == 'left') {
-        btProvider.sendKeyboardShortcut("ctrl+meta", "left_arrow"); // Virtual Desktop Left
-      } else if (direction == 'right') {
-        btProvider.sendKeyboardShortcut("ctrl+meta", "right_arrow"); // Virtual Desktop Right
-      }
-    } else if (prof == 'linux') {
-      if (direction == 'left') {
-        btProvider.sendKeyboardShortcut("ctrl+alt", "left_arrow");
-      } else if (direction == 'right') {
-        btProvider.sendKeyboardShortcut("ctrl+alt", "right_arrow");
-      }
-    } else {
-      // Fallback
-      if (direction == 'left') {
-        btProvider.sendKeyboardShortcut("ctrl", "left_arrow");
-      } else if (direction == 'right') {
-        btProvider.sendKeyboardShortcut("ctrl", "right_arrow");
-      }
-    }
+  void _sendFourFingerSwipe(ControlTransport transport, SettingsProvider settings, String direction) {
+    transport.sendGesture('four_finger_swipe_$direction', settings.platformProfile.toLowerCase());
   }
 
   // Presentation Mode Next/Prev Slide
-  void _sendNextSlide(BluetoothProvider btProvider, SettingsProvider settings) {
-    btProvider.sendKeyboardShortcut("", "right_arrow");
+  void _sendNextSlide(ControlTransport transport, SettingsProvider settings) {
+    transport.sendKeyboardShortcut("", "right_arrow");
   }
 
-  void _sendPrevSlide(BluetoothProvider btProvider, SettingsProvider settings) {
-    btProvider.sendKeyboardShortcut("", "left_arrow");
+  void _sendPrevSlide(ControlTransport transport, SettingsProvider settings) {
+    transport.sendKeyboardShortcut("", "left_arrow");
   }
 
-  void _sendStartSlideshow(BluetoothProvider btProvider, SettingsProvider settings) {
+  void _sendStartSlideshow(ControlTransport transport, SettingsProvider settings) {
     final prof = settings.platformProfile.toLowerCase();
     if (prof == 'keynote') {
-      btProvider.sendKeyboardShortcut("meta+alt", "p"); // Cmd + Option + P
+      transport.sendKeyboardShortcut("meta+alt", "p");
     } else if (prof == 'powerpoint') {
       if (settings.presentationProfile.contains('mac')) {
-        btProvider.sendKeyboardShortcut("meta+shift", "enter"); // Cmd + Shift + Enter
+        transport.sendKeyboardShortcut("meta+shift", "enter");
       } else {
-        btProvider.sendKeyboardShortcut("", "f5"); // F5
+        transport.sendKeyboardShortcut("", "f5");
       }
     } else if (prof == 'google_slides') {
       if (settings.presentationProfile.contains('mac')) {
-        btProvider.sendKeyboardShortcut("meta", "enter"); // Cmd + Enter
+        transport.sendKeyboardShortcut("meta", "enter");
       } else {
-        btProvider.sendKeyboardShortcut("ctrl", "f5"); // Ctrl + F5
+        transport.sendKeyboardShortcut("ctrl", "f5");
       }
     } else if (prof == 'macos') {
-      btProvider.sendKeyboardShortcut("meta+shift", "enter");
+      transport.sendKeyboardShortcut("meta+shift", "enter");
     } else {
-      btProvider.sendKeyboardShortcut("", "f5");
+      transport.sendKeyboardShortcut("", "f5");
     }
   }
 }

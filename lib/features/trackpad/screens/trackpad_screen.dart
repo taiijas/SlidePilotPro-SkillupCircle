@@ -2,7 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../../bluetooth/providers/bluetooth_provider.dart';
+import '../../../core/services/transport_provider.dart';
+import '../../../core/services/control_transport.dart';
 import '../../settings/providers/settings_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../services/gesture_engine.dart';
@@ -56,23 +57,23 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
     }
   }
 
-  void _sendLeftClick(BluetoothProvider btProvider) async {
+  void _sendLeftClick(ControlTransport transport) async {
     _triggerHaptic(context);
-    await btProvider.sendMouseButton(0, true);  // Left down
+    await transport.sendMouseButton(0, true);  // Left down
     await Future.delayed(const Duration(milliseconds: 30));
-    await btProvider.sendMouseButton(0, false); // Left up
+    await transport.sendMouseButton(0, false); // Left up
   }
 
-  void _sendRightClick(BluetoothProvider btProvider) async {
+  void _sendRightClick(ControlTransport transport) async {
     _triggerHaptic(context);
-    await btProvider.sendMouseButton(1, true);  // Right down
+    await transport.sendMouseButton(1, true);  // Right down
     await Future.delayed(const Duration(milliseconds: 30));
-    await btProvider.sendMouseButton(1, false); // Right up
+    await transport.sendMouseButton(1, false); // Right up
   }
 
-  void _runDiagnosticShortcut(BluetoothProvider btProvider, String modifier, String key) async {
+  void _runDiagnosticShortcut(ControlTransport transport, String modifier, String key) async {
     _triggerHaptic(context);
-    final connected = btProvider.hostConnectionState == 2;
+    final connected = transport.isConnected;
     if (!connected) {
       setState(() {
         _warningMessage = "Cannot send diagnostic: Host disconnected.";
@@ -86,7 +87,8 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
       return;
     }
     
-    await btProvider.sendKeyboardShortcut(modifier, key);
+    await transport.sendKeyboardShortcut(modifier, key);
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Sent shortcut: $modifier + $key'),
@@ -98,11 +100,16 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final btProvider = Provider.of<BluetoothProvider>(context);
+    final transportProvider = Provider.of<TransportProvider>(context);
     final settings = Provider.of<SettingsProvider>(context);
-    final isConnected = btProvider.hostConnectionState == 2;
+    final isConnected = transportProvider.isConnected;
 
     final isTrackpadMode = settings.gestureMode == 'trackpad';
+    final status = transportProvider.connectionStatusName;
+    final isWaiting = status == 'Receiver Waiting' || status == 'Connecting';
+    final chipColor = isConnected 
+        ? AppTheme.success 
+        : (isWaiting ? Colors.amber : AppTheme.error);
 
     return Scaffold(
       appBar: AppBar(
@@ -114,13 +121,11 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
             margin: const EdgeInsets.only(right: 16),
             child: Chip(
               label: Text(
-                isConnected ? 'CONNECTED' : 'DISCONNECTED',
+                status.toUpperCase(),
                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
               ),
-              backgroundColor: isConnected 
-                  ? AppTheme.success.withValues(alpha: 0.2) 
-                  : AppTheme.error.withValues(alpha: 0.2),
-              side: BorderSide(color: isConnected ? AppTheme.success : AppTheme.error),
+              backgroundColor: chipColor.withValues(alpha: 0.2),
+              side: BorderSide(color: chipColor),
             ),
           )
         ],
@@ -205,10 +210,10 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
             Expanded(
               child: Listener(
                 behavior: HitTestBehavior.opaque,
-                onPointerDown: (e) => _gestureEngine.handlePointerEvent(e, btProvider, settings),
-                onPointerMove: (e) => _gestureEngine.handlePointerEvent(e, btProvider, settings),
-                onPointerUp: (e) => _gestureEngine.handlePointerEvent(e, btProvider, settings),
-                onPointerCancel: (e) => _gestureEngine.handlePointerEvent(e, btProvider, settings),
+                onPointerDown: (e) => _gestureEngine.handlePointerEvent(e, transportProvider.activeTransport, settings),
+                onPointerMove: (e) => _gestureEngine.handlePointerEvent(e, transportProvider.activeTransport, settings),
+                onPointerUp: (e) => _gestureEngine.handlePointerEvent(e, transportProvider.activeTransport, settings),
+                onPointerCancel: (e) => _gestureEngine.handlePointerEvent(e, transportProvider.activeTransport, settings),
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
@@ -282,7 +287,7 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                         ),
-                        onPressed: isConnected ? () => _sendLeftClick(btProvider) : null,
+                        onPressed: isConnected ? () => _sendLeftClick(transportProvider.activeTransport) : null,
                         child: const Text(
                           'LEFT CLICK',
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
@@ -303,7 +308,7 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                         ),
-                        onPressed: isConnected ? () => _sendRightClick(btProvider) : null,
+                        onPressed: isConnected ? () => _sendRightClick(transportProvider.activeTransport) : null,
                         child: const Text(
                           'RIGHT CLICK',
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
@@ -317,7 +322,7 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
             ],
 
             // Diagnostics Panel
-            _buildDiagnosticsPanel(context, btProvider),
+            _buildDiagnosticsPanel(context, transportProvider.activeTransport),
           ],
         ),
       ),
@@ -400,7 +405,7 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
       ),
       child: ExpansionTile(
         visualDensity: VisualDensity.compact,
-        leading: Icon(Icons.help_outline, color: AppTheme.accentBlue, size: 20),
+        leading: const Icon(Icons.help_outline, color: AppTheme.accentBlue, size: 20),
         title: Text(
           guideTitle,
           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white70),
@@ -426,7 +431,7 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
     );
   }
 
-  Widget _buildDiagnosticsPanel(BuildContext context, BluetoothProvider btProvider) {
+  Widget _buildDiagnosticsPanel(BuildContext context, ControlTransport transport) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -442,7 +447,7 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
               Icon(Icons.bug_report_outlined, size: 16, color: AppTheme.textMuted),
               SizedBox(width: 8),
               Text(
-                'HID DIANOSTICS PANEL',
+                'HID DIAGNOSTICS PANEL',
                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.textMuted, letterSpacing: 1.0),
               ),
             ],
@@ -452,12 +457,12 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildDiagButton(btProvider, 'Cmd + Plus', 'meta', 'plus'),
-                _buildDiagButton(btProvider, 'Cmd - Minus', 'meta', 'minus'),
-                _buildDiagButton(btProvider, 'Ctrl + Up', 'ctrl', 'up_arrow'),
-                _buildDiagButton(btProvider, 'Ctrl + Left', 'ctrl', 'left_arrow'),
-                _buildDiagButton(btProvider, 'Alt + Tab', 'alt', 'tab'),
-                _buildDiagButton(btProvider, 'Win + Tab', 'meta', 'tab'),
+                _buildDiagButton(transport, 'Cmd + Plus', 'meta', 'plus'),
+                _buildDiagButton(transport, 'Cmd - Minus', 'meta', 'minus'),
+                _buildDiagButton(transport, 'Ctrl + Up', 'ctrl', 'up_arrow'),
+                _buildDiagButton(transport, 'Ctrl + Left', 'ctrl', 'left_arrow'),
+                _buildDiagButton(transport, 'Alt + Tab', 'alt', 'tab'),
+                _buildDiagButton(transport, 'Win + Tab', 'meta', 'tab'),
               ],
             ),
           )
@@ -466,7 +471,7 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
     );
   }
 
-  Widget _buildDiagButton(BluetoothProvider btProvider, String label, String mod, String key) {
+  Widget _buildDiagButton(ControlTransport transport, String label, String mod, String key) {
     return Padding(
       padding: const EdgeInsets.only(right: 8.0),
       child: ElevatedButton(
@@ -482,7 +487,7 @@ class _TrackpadScreenState extends State<TrackpadScreen> {
             side: const BorderSide(color: AppTheme.borderCol),
           ),
         ),
-        onPressed: () => _runDiagnosticShortcut(btProvider, mod, key),
+        onPressed: () => _runDiagnosticShortcut(transport, mod, key),
         child: Text(label),
       ),
     );

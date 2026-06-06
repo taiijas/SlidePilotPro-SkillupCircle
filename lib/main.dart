@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_skill/flutter_skill.dart';
 import 'package:provider/provider.dart';
+import 'core/services/receiver_service.dart';
+import 'core/services/transport_provider.dart';
 import 'core/theme/app_theme.dart';
 import 'features/bluetooth/providers/bluetooth_provider.dart';
 import 'features/settings/providers/settings_provider.dart';
@@ -72,6 +74,21 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
         ChangeNotifierProvider(create: (_) => BluetoothProvider()),
+        ChangeNotifierProvider(create: (_) => ReceiverService()),
+        ChangeNotifierProxyProvider3<SettingsProvider, BluetoothProvider, ReceiverService, TransportProvider>(
+          create: (context) => TransportProvider(
+            Provider.of<SettingsProvider>(context, listen: false),
+            Provider.of<BluetoothProvider>(context, listen: false),
+            Provider.of<ReceiverService>(context, listen: false),
+          ),
+          update: (context, settings, bluetooth, receiver, previous) {
+            if (previous == null) {
+              return TransportProvider(settings, bluetooth, receiver);
+            }
+            previous.update(settings, bluetooth, receiver);
+            return previous;
+          },
+        ),
       ],
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) {

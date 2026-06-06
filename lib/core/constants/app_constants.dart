@@ -28,7 +28,17 @@ class AppConstants {
   static const String keyFourFingerTapCustomKey = 'four_finger_tap_custom_key';
   static const String keyShowGestureGuide = 'show_gesture_guide';
 
+  // Mode 2: Universal Receiver Settings Keys
+  static const String keyPreferredConnectionMode = 'preferred_connection_mode';
+  static const String keySavedReceivers = 'saved_receivers';
+  static const String keyLastReceiverHost = 'last_receiver_host';
+  static const String keyLastReceiverPort = 'last_receiver_port';
+  static const String keyLastReceiverPin = 'last_receiver_pin';
+  static const String keyReceiverTimeout = 'receiver_timeout_ms';
+
   // Default values
+  static const String defaultConnectionMode = 'auto'; // 'auto', 'bluetooth', 'receiver'
+  static const int defaultReceiverTimeout = 5000; // 5 seconds
   static const double defaultPointerSensitivity = 1.0;
   static const double defaultScrollSensitivity = 1.0;
   static const bool defaultHapticFeedback = true;

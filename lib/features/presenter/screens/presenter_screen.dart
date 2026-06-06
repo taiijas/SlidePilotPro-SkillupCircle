@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../../bluetooth/providers/bluetooth_provider.dart';
+import '../../../core/services/transport_provider.dart';
 import '../../settings/providers/settings_provider.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_theme.dart';
@@ -11,12 +11,12 @@ class PresenterScreen extends StatelessWidget {
 
   void _sendAction(BuildContext context, String action) {
     final settings = Provider.of<SettingsProvider>(context, listen: false);
-    final btProvider = Provider.of<BluetoothProvider>(context, listen: false);
+    final transportProvider = Provider.of<TransportProvider>(context, listen: false);
 
-    if (btProvider.hostConnectionState != 2) {
+    if (!transportProvider.isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Not connected to a host device. Please connect in the Connect tab.'),
+        SnackBar(
+          content: Text('Not connected: ${transportProvider.connectionStatusName}. Please connect in the Connect tab.'),
           backgroundColor: AppTheme.error,
         ),
       );
@@ -84,16 +84,21 @@ class PresenterScreen extends StatelessWidget {
     }
 
     if (key.isNotEmpty) {
-      btProvider.sendKeyboardKey(modifier, key);
+      transportProvider.activeTransport.sendKeyboardKey(modifier, key);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final btProvider = Provider.of<BluetoothProvider>(context);
+    final transportProvider = Provider.of<TransportProvider>(context);
     final settings = Provider.of<SettingsProvider>(context);
 
-    final isConnected = btProvider.hostConnectionState == 2;
+    final status = transportProvider.connectionStatusName;
+    final isConnected = transportProvider.isConnected;
+    final isWaiting = status == 'Receiver Waiting' || status == 'Connecting';
+    final chipColor = isConnected 
+        ? AppTheme.success 
+        : (isWaiting ? Colors.amber : AppTheme.error);
 
     return Scaffold(
       appBar: AppBar(
@@ -105,11 +110,11 @@ class PresenterScreen extends StatelessWidget {
             margin: const EdgeInsets.only(right: 16),
             child: Chip(
               label: Text(
-                isConnected ? 'CONNECTED' : 'DISCONNECTED',
+                status.toUpperCase(),
                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
               ),
-              backgroundColor: isConnected ? AppTheme.success.withValues(alpha: 0.2) : AppTheme.error.withValues(alpha: 0.2),
-              side: BorderSide(color: isConnected ? AppTheme.success : AppTheme.error),
+              backgroundColor: chipColor.withValues(alpha: 0.2),
+              side: BorderSide(color: chipColor),
             ),
           )
         ],

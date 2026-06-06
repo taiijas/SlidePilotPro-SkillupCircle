@@ -30,6 +30,8 @@ class SettingsProvider with ChangeNotifier {
   String _fourFingerTapCustomModifier = AppConstants.defaultFourFingerTapCustomModifier;
   String _fourFingerTapCustomKey = AppConstants.defaultFourFingerTapCustomKey;
   bool _showGestureGuide = AppConstants.defaultShowGestureGuide;
+  String _preferredConnectionMode = AppConstants.defaultConnectionMode;
+  int _receiverTimeout = AppConstants.defaultReceiverTimeout;
 
   // Getters
   bool get isInitialized => _isInitialized;
@@ -55,6 +57,8 @@ class SettingsProvider with ChangeNotifier {
   String get fourFingerTapCustomModifier => _fourFingerTapCustomModifier;
   String get fourFingerTapCustomKey => _fourFingerTapCustomKey;
   bool get showGestureGuide => _showGestureGuide;
+  String get preferredConnectionMode => _preferredConnectionMode;
+  int get receiverTimeout => _receiverTimeout;
 
   SettingsProvider() {
     _loadSettings();
@@ -107,6 +111,10 @@ class SettingsProvider with ChangeNotifier {
         AppConstants.defaultFourFingerTapCustomKey;
     _showGestureGuide = _prefs.getBool(AppConstants.keyShowGestureGuide) ??
         AppConstants.defaultShowGestureGuide;
+    _preferredConnectionMode = _prefs.getString(AppConstants.keyPreferredConnectionMode) ??
+        AppConstants.defaultConnectionMode;
+    _receiverTimeout = _prefs.getInt(AppConstants.keyReceiverTimeout) ??
+        AppConstants.defaultReceiverTimeout;
 
     _applyWakelock();
 
@@ -247,6 +255,18 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setPreferredConnectionMode(String value) async {
+    _preferredConnectionMode = value;
+    await _prefs.setString(AppConstants.keyPreferredConnectionMode, value);
+    notifyListeners();
+  }
+
+  Future<void> setReceiverTimeout(int value) async {
+    _receiverTimeout = value;
+    await _prefs.setInt(AppConstants.keyReceiverTimeout, value);
+    notifyListeners();
+  }
+
   void _applyWakelock() {
     try {
       if (_keepScreenAwake) {
@@ -282,6 +302,8 @@ class SettingsProvider with ChangeNotifier {
     _fourFingerTapCustomModifier = AppConstants.defaultFourFingerTapCustomModifier;
     _fourFingerTapCustomKey = AppConstants.defaultFourFingerTapCustomKey;
     _showGestureGuide = AppConstants.defaultShowGestureGuide;
+    _preferredConnectionMode = AppConstants.defaultConnectionMode;
+    _receiverTimeout = AppConstants.defaultReceiverTimeout;
 
     await _prefs.remove(AppConstants.keyPointerSensitivity);
     await _prefs.remove(AppConstants.keyScrollSensitivity);
@@ -307,6 +329,8 @@ class SettingsProvider with ChangeNotifier {
     await _prefs.remove(AppConstants.keyShowGestureGuide);
     await _prefs.remove(AppConstants.keyLastDeviceAddress);
     await _prefs.remove(AppConstants.keyLastDeviceName);
+    await _prefs.remove(AppConstants.keyPreferredConnectionMode);
+    await _prefs.remove(AppConstants.keyReceiverTimeout);
 
     _applyWakelock();
     notifyListeners();
